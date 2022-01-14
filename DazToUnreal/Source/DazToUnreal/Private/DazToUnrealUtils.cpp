@@ -19,14 +19,33 @@ FString FDazToUnrealUtils::SanitizeName(FString OriginalName)
 
 bool FDazToUnrealUtils::MakeDirectoryAndCheck(FString& Directory)
 {
+	// Directory Tree Algorithm courtesy of: "https://nerivec.github.io/old-ue4-wiki/pages/algorithm-analysis-create-directory-recursively.html"
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	if (!FPaths::DirectoryExists(Directory))
+	FString TargetFolderPath = Directory;
+	FPaths::NormalizeDirectoryName(TargetFolderPath);
+	TargetFolderPath += "/";
+
+	FString CurrentFolderLevel;
+	FString NextFolderLevel;
+	FString RemainingString;
+
+	TargetFolderPath.Split(TEXT("/"), &CurrentFolderLevel, &RemainingString);
+	CurrentFolderLevel += "/";
+
+	int loopIterations = 0;
+	while (RemainingString != "" && loopIterations < 1000)
 	{
-		PlatformFile.CreateDirectory(*Directory);
-		if (!FPaths::DirectoryExists(Directory))
+		RemainingString.Split(TEXT("/"), &NextFolderLevel, &RemainingString);
+		CurrentFolderLevel += NextFolderLevel + FString("/");
+		if (!FPaths::DirectoryExists(CurrentFolderLevel))
 		{
-			return false;
+			PlatformFile.CreateDirectory(*CurrentFolderLevel);
+			if (!FPaths::DirectoryExists(CurrentFolderLevel))
+			{
+				return false;
+			}
 		}
+		loopIterations++;
 	}
 	return true;
 }
