@@ -29,6 +29,7 @@ class FDazToUnrealModule : public IModuleInterface
 {
 public:
 	static int BatchConversionMode;
+	static FString BatchConversionDestPath;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
@@ -88,9 +89,6 @@ private:
 	//void GetWeights(FbxNode *SceneNode, TMap<int, TArray<int>>& VertexPolygons, TMap<int, double>& ClusterWeights, FVector TargetPosition, int SearchFromVertex, TArray<int>& TouchedPolygons, TArray<int>& TouchedVertices, double& WeightsOut, double& DistancesOut, int32 Depth);
 
 private:
-
-	/** Helper function to create a directory and return true if the directory exists*/
-	bool MakeDirectoryAndCheck(FString& Directory);
 
 	/** Imports the textures for the model*/
 	bool ImportTextureAssets(TArray<FString>& SourcePaths, FString& ImportLocation);

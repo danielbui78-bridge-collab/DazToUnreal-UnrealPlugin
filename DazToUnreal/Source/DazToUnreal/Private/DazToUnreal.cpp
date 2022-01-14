@@ -113,6 +113,7 @@ THIRD_PARTY_INCLUDES_END
 #define LOCTEXT_NAMESPACE "FDazToUnrealModule"
 
 int FDazToUnrealModule::BatchConversionMode;
+FString FDazToUnrealModule::BatchConversionDestPath;
 
 void FDazToUnrealModule::StartupModule()
 {
@@ -295,6 +296,11 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 			for (int i = 0; i < jobPool.Num(); i++)
 			{
 				FString DtuFile = jobPool[i];
+				// get containing folder
+				FString sourcePath = FPaths::GetPath(DtuFile);
+				FString containingFolder = FPaths::GetPathLeaf(sourcePath);
+				BatchConversionDestPath = TEXT("BatchConversions") / containingFolder;
+
 				FString Json;
 				FFileHelper::LoadFileToString(Json, *DtuFile);
 				TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(Json);
@@ -305,8 +311,6 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 				}
 			}
 		}
-		// re-enable UDP listening after jobpool is finished
-//		BatchConversionMode = 0;
 		BatchConversionMode = 2;
 	}
 	else if (BatchConversionMode == 0)
@@ -346,24 +350,12 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 	else if (BatchConversionMode == 2)
 	{
 		// Exit when batch conversion complete
+		FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
+		auto editorActions = LevelEditorModule.GetGlobalLevelEditorActions();
 //		FGenericPlatformMisc::RequestExit(false);
 	}
 	
 	return true;
-}
-
-bool FDazToUnrealModule::MakeDirectoryAndCheck(FString& Directory)
-{
-	 IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	 if (!FPaths::DirectoryExists(Directory))
-	 {
-		  PlatformFile.CreateDirectory(*Directory);
-		  if (!FPaths::DirectoryExists(Directory))
-		  {
-				return false;
-		  }
-	 }
-	 return true;
 }
 
 UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
@@ -374,6 +366,8 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 FString BaseFBXPath = JsonObject->GetStringField(TEXT("Base FBX File"));
 	 FString HDFBXPath = JsonObject->GetStringField(TEXT("HD FBX File"));
 	 FString AssetName = FDazToUnrealUtils::SanitizeName(JsonObject->GetStringField(TEXT("Asset Name")));
+	 if (JsonObject->GetStringField(TEXT("Product Component Name")) != "")
+		AssetName = FDazToUnrealUtils::SanitizeName(JsonObject->GetStringField(TEXT("Product Component Name")));
 	 FString ImportFolder = JsonObject->GetStringField(TEXT("Import Folder"));
 	 DazAssetType AssetType = DazAssetType::StaticMesh;
 	 if (JsonObject->GetStringField(TEXT("Asset Type")) == TEXT("SkeletalMesh"))
@@ -406,6 +400,12 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 FString CharacterFolder = DAZImportFolder / AssetName;
 	 FString CharacterTexturesFolder = CharacterFolder / TEXT("Textures");
 	 FString CharacterMaterialFolder = CharacterFolder / TEXT("Materials");
+	 if (BatchConversionMode != 0)
+	 {
+		 CharacterFolder = DAZImportFolder / BatchConversionDestPath;
+		 CharacterTexturesFolder = DAZImportFolder / BatchConversionDestPath / TEXT("Textures");
+		 CharacterMaterialFolder = DAZImportFolder / BatchConversionDestPath / TEXT("Materials");
+	 }
 
 	 IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
@@ -608,8 +608,12 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  // Version 3 "Version, ObjectName, Material, [Type, Color, Opacity, File]"
 		  if (Version == 3)
 		  {		
-				FString ObjectName = material->GetStringField(TEXT("Asset Name"));
-				ObjectName = FDazToUnrealUtils::SanitizeName(ObjectName);
+				// DB 2022-Jan-14: Removed older BaseMat naming scheme to use unified "AssetName"
+//				FString ObjectName = material->GetStringField(TEXT("Asset Name"));
+//				ObjectName = FDazToUnrealUtils::SanitizeName(ObjectName);
+//				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
+
+				FString ObjectName = FDazToUnrealUtils::SanitizeName(AssetName);
 				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
 				FString ShaderName = material->GetStringField(TEXT("Material Type"));
 				FString MaterialName;
@@ -619,7 +623,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				}
 				else
 				{
-					 MaterialName = AssetName + TEXT("_") + material->GetStringField(TEXT("Material Name"));
+					 MaterialName = ObjectName + TEXT("_") + material->GetStringField(TEXT("Material Name"));
 				}
 				
 				MaterialName = FDazToUnrealUtils::SanitizeName(MaterialName);
@@ -685,10 +689,18 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 						{
 							int32 TextureCount = 0;
 							FString NewTextureName = FString::Printf(TEXT("%s_%02d_%s"), *TextureName, TextureCount, *AssetName);
+							if (BatchConversionMode != 0)
+							{
+								NewTextureName = FString::Printf(TEXT("%s_%02d"), *TextureName, TextureCount);
+							}
 							while (TextureFileSourceToTarget.FindKey(NewTextureName) != nullptr)
 							{
 								TextureCount++;
 								NewTextureName = FString::Printf(TEXT("%s_%02d_%s"), *TextureName, TextureCount, *AssetName);
+								if (BatchConversionMode != 0)
+								{
+									NewTextureName = FString::Printf(TEXT("%s_%02d"), *TextureName, TextureCount);
+								}
 							}
 							TextureFileSourceToTarget.Add(TexturePath, NewTextureName);
 						}
@@ -1123,7 +1135,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 // Make folders for saving the updated FBX file
 	 FString UpdatedFBXFolder = FPaths::GetPath(FBXFile) / TEXT("UpdatedFBX");
 	 FString UpdatedFBXFile = FPaths::GetPath(FBXFile) / TEXT("UpdatedFBX") / FPaths::GetCleanFilename(FBXPath);
-	 if (!MakeDirectoryAndCheck(UpdatedFBXFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(UpdatedFBXFolder)) return nullptr;
 
 	 // Initialize the exporter by providing a filename.
 	 if (!Exporter->Initialize(TCHAR_TO_UTF8(*UpdatedFBXFile), FileFormat, SdkManager->GetIOSettings()))
@@ -1194,6 +1206,10 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 								if ((ChildProperty.ObjectName + TEXT("_BaseMat")) == IntermediateMaterialName)
 								{
 									 ChildMaterialFolder = CharacterMaterialFolder / ChildProperty.ObjectName;
+									 if (BatchConversionMode != 0)
+									 {
+										 ChildMaterialFolder = CharacterMaterialFolder;
+									 }
 									 ChildMaterials.AddUnique(ChildMaterialName);
 								}
 						  }
@@ -1376,7 +1392,23 @@ void FDazToUnrealModule::SetMaterialProperty(const FString& MaterialName, const 
 bool FDazToUnrealModule::ImportTextureAssets(TArray<FString>& SourcePaths, FString& ImportLocation)
 {
 	 FAssetToolsModule& AssetToolsModule = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools");
-	 TArray<UObject*> ImportedAssets = AssetToolsModule.Get().ImportAssets(SourcePaths, ImportLocation);
+	 //TArray<UObject*> ImportedAssets = AssetToolsModule.Get().ImportAssets(SourcePaths, ImportLocation);
+
+	 UTextureFactory* TextureFactory = NewObject<UTextureFactory>(UTextureFactory::StaticClass());
+	 UAutomatedAssetImportData* ImportData = NewObject<UAutomatedAssetImportData>(UAutomatedAssetImportData::StaticClass());
+	 ImportData->FactoryName = TEXT("TextureFactory");
+	 ImportData->Factory = TextureFactory;
+	 ImportData->Filenames = SourcePaths;
+	 ImportData->DestinationPath = ImportLocation;
+	 if (BatchConversionMode != 0)
+		 ImportData->bReplaceExisting = false;
+	 else
+		 ImportData->bReplaceExisting = true;
+	 if (ImportData->IsValid() == false)
+	 {
+		 return false;
+	 }
+	 TArray<UObject*> ImportedAssets = AssetToolsModule.Get().ImportAssetsAutomated(ImportData);
 	 if (ImportedAssets.Num() > 0)
 	 {
 		  return true;
@@ -1460,7 +1492,10 @@ UObject* FDazToUnrealModule::ImportFBXAsset(const FString& SourcePath, const FSt
 	 ImportData->Factory = FbxFactory;
 	 ImportData->Filenames = FileNames;
 	 ImportData->DestinationPath = ImportLocation;
-	 ImportData->bReplaceExisting = true;
+	 if (BatchConversionMode != 0)
+		 ImportData->bReplaceExisting = false;
+	 else
+		ImportData->bReplaceExisting = true;
 	 if (AssetType == DazAssetType::Animation || AssetType == DazAssetType::Pose)
 	 {
 		  ImportData->DestinationPath = CachedSettings->AnimationImportDirectory.Path;
