@@ -52,6 +52,7 @@
 #include "Serialization/JsonReader.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
+#include <Editor/UnrealEd/Public/FileHelpers.h>
 //#include "ISkeletonEditorModule.h"
 //#include "IEditableSkeleton.h"
 
@@ -350,9 +351,8 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 	else if (BatchConversionMode == 2)
 	{
 		// Exit when batch conversion complete
-		FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-		auto editorActions = LevelEditorModule.GetGlobalLevelEditorActions();
-//		FGenericPlatformMisc::RequestExit(false);
+		FEditorFileUtils::SaveDirtyPackages(false,false,true);
+		FGenericPlatformMisc::RequestExit(false);
 	}
 	
 	return true;
