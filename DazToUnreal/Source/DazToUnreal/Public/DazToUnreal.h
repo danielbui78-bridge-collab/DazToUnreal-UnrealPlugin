@@ -30,6 +30,7 @@ class FDazToUnrealModule : public IModuleInterface
 public:
 	static int BatchConversionMode;
 	static FString BatchConversionDestPath;
+	static TMap<FString, FString> AssetIDLookup;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;

@@ -1,6 +1,7 @@
 #include "DazToUnrealEnvironment.h"
 #include "DazToUnrealSettings.h"
 #include "DazToUnrealUtils.h"
+#include "DazToUnreal.h"
 #include "Dom/JsonObject.h"
 #include "EditorLevelLibrary.h"
 #include "Math/UnrealMathUtility.h"
@@ -42,6 +43,12 @@ void FDazToUnrealEnvironment::ImportEnvironment(TSharedPtr<FJsonObject> JsonObje
 
 		// Find the asset for this instance
 		FString AssetPath = CachedSettings->ImportDirectory.Path / InstanceAssetName / InstanceAssetName + TEXT(".") + InstanceAssetName;
+		if (FDazToUnrealModule::BatchConversionMode != 0)
+		{
+			// Use AssetIDLookup
+			FString RealAssetName = FDazToUnrealModule::AssetIDLookup[InstanceAssetName];
+			AssetPath = CachedSettings->ImportDirectory.Path / FDazToUnrealModule::BatchConversionDestPath / RealAssetName + TEXT(".") + RealAssetName;
+		}
 		UObject* InstanceObject = LoadObject<UObject>(NULL, *AssetPath, NULL, LOAD_None, NULL);
 
 		// Spawn the object into the scene

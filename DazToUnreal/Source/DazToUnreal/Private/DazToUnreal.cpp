@@ -11,6 +11,7 @@
 #include "DazToUnrealMorphs.h"
 #include "DazJointControlledMorphAnimInstance.h"
 
+#include "EditorLevelLibrary.h"
 #include "LevelEditor.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
@@ -115,6 +116,7 @@ THIRD_PARTY_INCLUDES_END
 
 int FDazToUnrealModule::BatchConversionMode;
 FString FDazToUnrealModule::BatchConversionDestPath;
+TMap<FString, FString> FDazToUnrealModule::AssetIDLookup;
 
 void FDazToUnrealModule::StartupModule()
 {
@@ -292,6 +294,8 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 		if (FPaths::FileExists(jobPoolFilename))
 		{
 			TArray<FString> jobPool;
+			TArray<TSharedPtr<FJsonObject>> environmentQueue;
+
 			FFileHelper::LoadFileToStringArray(jobPool, *jobPoolFilename);
 
 			for (int i = 0; i < jobPool.Num(); i++)
@@ -308,9 +312,22 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 				TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 				if (FJsonSerializer::Deserialize(JsonReader, JsonObject) && JsonObject.IsValid())
 				{
-					ImportFromDaz(JsonObject);
+					if (JsonObject->GetStringField(TEXT("Asset Type")) == TEXT("Environment"))
+					{
+						// move to environmentQueue
+						environmentQueue.Add(JsonObject);
+					}
+					else
+					{
+						ImportFromDaz(JsonObject);
+					}
 				}
 			}
+			for (int i = 0; i < environmentQueue.Num(); i++)
+			{
+				ImportFromDaz(environmentQueue[i]);
+			}
+
 		}
 		BatchConversionMode = 2;
 	}
@@ -379,6 +396,13 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 else if (JsonObject->GetStringField(TEXT("Asset Type")) == TEXT("Pose"))
 		 AssetType = DazAssetType::Pose;
 
+	 // Build AssetIDLookup
+	 FString AssetID = JsonObject->GetStringField(TEXT("AssetID"));
+	 if (!AssetIDLookup.Contains(AssetID))
+	 {
+		 AssetIDLookup.Add(AssetID, AssetName);
+	 }
+
 	 // Set up the folder paths
 	 FString ImportDirectory = FPaths::ProjectDir() / TEXT("Import");
 	 if (!ImportFolder.IsEmpty())
@@ -429,7 +453,11 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 	 if (AssetType == DazAssetType::Environment)
 	 {
+		 FString LevelPath = CharacterFolder / AssetName;
+		 FString TemplatePath = TEXT("/Engine/Content/Maps/Templates/Template_Default");
+		 UEditorLevelLibrary::NewLevelFromTemplate(LevelPath, TemplatePath);
 		 FDazToUnrealEnvironment::ImportEnvironment(JsonObject);
+		 UEditorLevelLibrary::SaveCurrentLevel();
 		 return nullptr;
 	 }
 
