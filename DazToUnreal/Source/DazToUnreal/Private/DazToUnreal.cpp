@@ -371,7 +371,7 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 		FEditorFileUtils::SaveDirtyPackages(false,false,true);
 		FGenericPlatformMisc::RequestExit(false);
 	}
-	
+
 	return true;
 }
 
@@ -636,7 +636,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 		  // Version 3 "Version, ObjectName, Material, [Type, Color, Opacity, File]"
 		  if (Version == 3)
-		  {		
+		  {
 				// DB 2022-Jan-14: Removed older BaseMat naming scheme to use unified "AssetName"
 //				FString ObjectName = material->GetStringField(TEXT("Asset Name"));
 //				ObjectName = FDazToUnrealUtils::SanitizeName(ObjectName);
@@ -654,7 +654,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				{
 					 MaterialName = ObjectName + TEXT("_") + material->GetStringField(TEXT("Material Name"));
 				}
-				
+
 				MaterialName = FDazToUnrealUtils::SanitizeName(MaterialName);
 
 				// DB 2021-Dec-16: TexturePath and TextureName moved to "per property" execution below
@@ -894,7 +894,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* IKRootNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_foot_root")));
 		  if (!IKRootNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKRootNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_root")));
 				IKRootNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKRootNodeAttribute->Size.Set(1.0);
@@ -909,7 +909,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* FootLNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("lFoot")));
 		  if (!IKFootLNode && FootLNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKFootLNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_l")));
 				IKFootLNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKFootLNodeAttribute->Size.Set(1.0);
@@ -925,7 +925,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* FootRNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("rFoot")));
 		  if (!IKFootRNode && FootRNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKFootRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_r")));
 				IKFootRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKFootRNodeAttribute->Size.Set(1.0);
@@ -940,7 +940,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* IKHandRootNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_root")));
 		  if (!IKHandRootNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRootNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_root")));
 				IKHandRootNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRootNodeAttribute->Size.Set(1.0);
@@ -955,7 +955,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* HandRNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("rHand")));
 		  if (!IKHandGunNode && HandRNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandGunNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 				IKHandGunNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandGunNodeAttribute->Size.Set(1.0);
@@ -972,7 +972,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  //FbxNode* IKHandGunNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 		  if (!IKHandRNode && HandRNode && IKHandGunNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_r")));
 				IKHandRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRNodeAttribute->Size.Set(1.0);
@@ -988,7 +988,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  //FbxNode* IKHandGunNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 		  if (!IKHandLNode && HandLNode && IKHandGunNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_l")));
 				IKHandRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRNodeAttribute->Size.Set(1.0);
@@ -1138,7 +1138,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  {
 				 NewMaterialName = AssetName + TEXT("_") + OriginalMaterialName;
 		  }
-		 
+
 		  NewMaterialName = FDazToUnrealUtils::SanitizeName(NewMaterialName);
 		  Material->SetName(TCHAR_TO_UTF8(*NewMaterialName));
 		  if (MaterialProperties.Contains(NewMaterialName))
@@ -1349,7 +1349,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				 SkeletalMesh->PostProcessAnimBlueprint = JointControlAnim->GetClass();
 			 }
 		 }
-		 
+
 	 }
 
 	 return NewObject;
@@ -1456,6 +1456,36 @@ bool FDazToUnrealModule::ImportTextureAssets(TArray<FString>& SourcePaths, FStri
 		 return false;
 	 }
 	 TArray<UObject*> ImportedAssets = AssetToolsModule.Get().ImportAssetsAutomated(ImportData);
+
+	 // Texture Corrections: sRGB
+	 if (ImportedAssets.Num() != SourcePaths.Num())
+	 {
+		 UE_LOG(LogTemp, Warning, TEXT("DazToUnreal: ImportTextureAssets() ERROR: ImportedAssets count is not equal to SourcePaths count. Texture Lookup Correction will likely fail..."));
+	 }
+	 int textureIndex = 0;
+	 for (FString SourcePath : SourcePaths)
+	 {
+		 if (m_targetTextureLookupTable.Contains(SourcePath))
+		 {
+			 TextureLookupInfo lookupData = m_targetTextureLookupTable[SourcePath];
+			 if (lookupData.bIsCutOut == true)
+			 {
+				 if (textureIndex >= ImportedAssets.Num())
+				 {
+					 UE_LOG(LogTemp, Warning, TEXT("DazToUnreal: ERROR: sRGB-corection texture-index lookup procedure returned invalid texture index. Skipping..."));
+				 }
+				 else
+				 {
+					 if (UTexture* texture = Cast<UTexture>(ImportedAssets[textureIndex]))
+					 {
+						 texture->SRGB = false;
+					 }
+				 }
+			 }
+		 }
+		 textureIndex++;
+	 }
+
 	 if (ImportedAssets.Num() > 0)
 	 {
 		  return true;
