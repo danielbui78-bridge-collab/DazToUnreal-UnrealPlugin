@@ -485,6 +485,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 // Use the maps file to find the textures to load
 	 TMap<FString, FString> TextureFileSourceToTarget;
 	 TArray<FString> IntermediateMaterials;
+	 m_sourceTextureLookupTable.Reset();
 
 	 TArray<TSharedPtr<FJsonValue>> matList = JsonObject->GetArrayField(TEXT("Materials"));
 	 for (int32 i = 0; i < matList.Num(); i++)
@@ -688,6 +689,13 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 					{
 						Property.Type = TEXT("Color");
 					}
+                    if (Property.Name == TEXT("Cutout Opacity") )
+					{
+						TextureLookupInfo lookupInfo;
+						lookupInfo.sSourceFullPath = TexturePath;
+						lookupInfo.bIsCutOut = true;
+						m_sourceTextureLookupTable.Add(TextureName, lookupInfo);
+                    }
 
 					// Properties that end with Enabled are switches for functionality
 					if (Property.Name.EndsWith(TEXT(" Enable")))
@@ -1205,10 +1213,21 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 if (AssetType == DazAssetType::SkeletalMesh || AssetType == DazAssetType::StaticMesh)
 	 {
 		  TArray<FString> TexturesFilesToImport;
+		  m_targetTextureLookupTable.Reset();
 		  for (auto TexturePair : TextureFileSourceToTarget)
 		  {
 				FString SourceFileName = TexturePair.Key;
 				FString TargetFileName = ImportCharacterTexturesFolder / TexturePair.Value + FPaths::GetExtension(SourceFileName, true);
+
+				// Map m_sourceTextureLookupTable to m_targetTextureLookupTable
+				// TODO: convert in place: m_sourceTextureLookupTable to m_targetTextureLookupTable
+				FString sSearchString = FDazToUnrealUtils::SanitizeName(FPaths::GetBaseFilename(SourceFileName));
+				if (m_sourceTextureLookupTable.Contains(sSearchString))
+				{
+					TextureLookupInfo lookupData = m_sourceTextureLookupTable[sSearchString];
+					m_targetTextureLookupTable.Add(TargetFileName, lookupData);
+				}
+
 				PlatformFile.CopyFile(*TargetFileName, *SourceFileName);
 				TexturesFilesToImport.Add(TargetFileName);
 		  }

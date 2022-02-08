@@ -24,6 +24,11 @@ enum DazAssetType
 	Pose
 };
 
+struct TextureLookupInfo
+{
+	FString sSourceFullPath;
+	bool bIsCutOut;
+};
 
 class FDazToUnrealModule : public IModuleInterface
 {
@@ -31,6 +36,8 @@ public:
 	static int BatchConversionMode;
 	static FString BatchConversionDestPath;
 	static TMap<FString, FString> AssetIDLookup;
+	TMap<FString, TextureLookupInfo> m_sourceTextureLookupTable;
+	TMap<FString, TextureLookupInfo> m_targetTextureLookupTable;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
