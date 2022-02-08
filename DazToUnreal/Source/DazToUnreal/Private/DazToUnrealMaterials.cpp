@@ -373,44 +373,7 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 		//BaseMaterialAssetPath = CachedSettings->NoDrawMaterial;
 	}
 
-	////////////////////////////////////////////////////////
-	// Shader Corrections for specific Daz-Shaders
-	////////////////////////////////////////////////////////
-	FString sCleanedName = MaterialName.Replace(TEXT("_"),TEXT(""));
-	double fGlobalTransparencyCorrection = 10.0;
-	if (ShaderName == TEXT("Iray Uber"))
-	{
-		double fIrayUberTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
-		FString transparencyOffsetCorrection = FString::SanitizeFloat(fIrayUberTransparencyCorrection);
-
-		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
-		if (
-			(sCleanedName.Contains(TEXT("KentHair")) && !MaterialName.Contains(TEXT("Cap")) )
-			|| (sCleanedName.Contains(TEXT("CapriScalp")) && !MaterialName.Contains(TEXT("_Scalp")) )
-			|| (sCleanedName.Contains(TEXT("Bronwyn")) && MaterialName.Contains(TEXT("_hair")) )
-			)
-		{
-			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
-			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
-		}
-
-	}
-	else if (ShaderName == TEXT("OOT Hairblending Hair"))
-	{
-		// 2022-Jan-31 (Qasim B): Transparency Correction for OOT Hairblending Hair
-		double fOOTTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
-		FString transparencyOffsetCorrection = FString::SanitizeFloat(fOOTTransparencyCorrection);
-		SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
-        //UE_LOG(LogTemp, Warning, TEXT("OOT Hairblending shader detected and fixed for material %s"), *MaterialName);
-
-	}
-
-	////////////////////////////////////////////////////////
-	// Shader Corrections for specific Daz-Materials
-	////////////////////////////////////////////////////////
-	//
-	// Place holder for Material-specific corections
-	//
+	CorrectDazShaders(MaterialName, MaterialProperties);
 
 	// Create the Material Instance
 	auto MaterialInstanceFactory = NewObject<UMaterialInstanceConstantFactoryNew>();
@@ -525,6 +488,74 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 	return UnrealMaterialConstant;
 }
 
+void FDazToUnrealMaterials::CorrectDazShaders(FString& MaterialName, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
+{
+	FString ShaderName = MaterialProperties[MaterialName][0].ShaderName;
+
+	////////////////////////////////////////////////////////
+	// Shader Corrections for specific Daz-Shaders
+	////////////////////////////////////////////////////////
+	FString sCleanedName = MaterialName.Replace(TEXT("_"), TEXT(""));
+	double fGlobalTransparencyCorrection = 10.0;
+	if (ShaderName == TEXT("Iray Uber"))
+	{
+		double fIrayUberTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fIrayUberTransparencyCorrection);
+
+		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
+		if (
+			(sCleanedName.Contains(TEXT("KentHair")) && !MaterialName.Contains(TEXT("Cap")))
+			|| ( (sCleanedName.Contains(TEXT("CapriScalp")) || sCleanedName.Contains(TEXT("CapriHair"))) && !MaterialName.Contains(TEXT("_Scalp")))
+			|| (sCleanedName.Contains(TEXT("Bronwyn")) && MaterialName.Contains(TEXT("_hair")))
+			)
+		{
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+
+	}
+	else if (ShaderName == TEXT("OOT Hairblending Hair"))
+	{
+		// 2022-Jan-31 (Qasim B): Transparency Correction for OOT Hairblending Hair
+		double fOOTTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fOOTTransparencyCorrection);
+		SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+		//UE_LOG(LogTemp, Warning, TEXT("OOT Hairblending shader detected and fixed for material %s"), *MaterialName);
+
+	}
+	else if (ShaderName == TEXT("Littlefox Hair Shader"))
+	{
+		FString hexCorrection = "";
+		bool _materialFound = false;
+
+
+		if (MaterialProperties.Contains(MaterialName))
+		{
+			// UE_LOG(LogTemp, Warning, TEXT("Executing For: %s"), *MaterialName);
+			for (FDUFTextureProperty Property : MaterialProperties[MaterialName])
+			{
+				// UE_LOG(LogTemp, Warning, TEXT("M: %s P: %s"), *MaterialName, *Property.Name);
+				if (Property.Name == TEXT("LLF-BaseColor"))
+				{
+					hexCorrection = Property.Value;
+					SetMaterialProperty(MaterialName, TEXT("Diffuse Color"), TEXT("Color"), hexCorrection, MaterialProperties);
+					_materialFound = true;
+					break;
+				}
+			}
+		}
+
+	}
+
+	////////////////////////////////////////////////////////
+	// Shader Corrections for specific Daz-Materials
+	////////////////////////////////////////////////////////
+	//
+	// Place holder for Material-specific corections
+	//
+
+}
+
 void FDazToUnrealMaterials::SetMaterialProperty(const FString& MaterialName, const FString& PropertyName, const FString& PropertyType, const FString& PropertyValue, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
 {
 	if (!MaterialProperties.Contains(MaterialName))
@@ -579,6 +610,7 @@ FSoftObjectPath FDazToUnrealMaterials::GetMostCommonBaseMaterial(TArray<FString>
 
 TArray<FDUFTextureProperty> FDazToUnrealMaterials::GetMostCommonProperties(TArray<FString> MaterialNames, TMap<FString, TArray<FDUFTextureProperty>> MaterialProperties)
 {
+
 	// Get a list of property names
 	TArray<FString> PossibleProperties;
 	for (FString MaterialName : MaterialNames)
