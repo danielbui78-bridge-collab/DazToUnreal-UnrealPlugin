@@ -4,7 +4,7 @@
 
 FString FDazToUnrealUtils::SanitizeName(FString OriginalName)
 {
-	return OriginalName.Replace(TEXT(" "), TEXT("_"))
+	return OriginalName.Replace(TEXT(" "), TEXT(""))
 		.Replace(TEXT("("), TEXT("_"))
 		.Replace(TEXT(")"), TEXT("_"))
 		.Replace(TEXT("."), TEXT("_"))
