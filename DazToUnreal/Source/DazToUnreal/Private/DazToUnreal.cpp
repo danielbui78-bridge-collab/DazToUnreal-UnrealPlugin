@@ -640,7 +640,6 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				// DB 2022-Jan-14: Removed older BaseMat naming scheme to use unified "AssetName"
 //				FString ObjectName = material->GetStringField(TEXT("Asset Name"));
 //				ObjectName = FDazToUnrealUtils::SanitizeName(ObjectName);
-//				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
 
 				FString ObjectName = FDazToUnrealUtils::SanitizeName(AssetName);
 				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
@@ -685,6 +684,8 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 					Property.ObjectName = ObjectName;
 					Property.ShaderName = ShaderName;
+					FString sMaterialAssetName = material->GetStringField(TEXT("Asset Name"));
+					Property.MaterialAssetName = FDazToUnrealUtils::SanitizeName(sMaterialAssetName);
 					if (Property.Type == TEXT("Texture"))
 					{
 						Property.Type = TEXT("Color");
@@ -1147,16 +1148,30 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  }
 		  else
 		  {
-				for (int32 MeshIndex = Scene->GetGeometryCount() - 1; MeshIndex >= 0; --MeshIndex)
+				// search all materialproperties for partial match
+				bool bPartialMatchFound = false;
+				for (auto keyvalPair : MaterialProperties)
 				{
-					 FbxGeometry* Geometry = Scene->GetGeometry(MeshIndex);
-					 FbxNode* GeometryNode = Geometry->GetNode();
-					 if (GeometryNode->GetMaterialIndex(TCHAR_TO_UTF8(*NewMaterialName)) != -1)
-					 {
-						  Scene->RemoveGeometry(Geometry);
-					 }
+					if (keyvalPair.Key.Contains(TEXT("_") + OriginalMaterialName))
+					{
+						MaterialNames.Add(keyvalPair.Key);
+						bPartialMatchFound = true;
+						break;
+					}
 				}
-				Scene->RemoveMaterial(Material);
+				if (bPartialMatchFound == false)
+				{
+					for (int32 MeshIndex = Scene->GetGeometryCount() - 1; MeshIndex >= 0; --MeshIndex)
+					{
+						FbxGeometry* Geometry = Scene->GetGeometry(MeshIndex);
+						FbxNode* GeometryNode = Geometry->GetNode();
+						if (GeometryNode->GetMaterialIndex(TCHAR_TO_UTF8(*NewMaterialName)) != -1)
+						{
+							Scene->RemoveGeometry(Geometry);
+						}
+					}
+					Scene->RemoveMaterial(Material);
+				}
 		  }
 
 	 }

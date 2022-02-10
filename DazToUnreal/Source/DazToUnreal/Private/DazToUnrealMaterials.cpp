@@ -488,9 +488,16 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 	return UnrealMaterialConstant;
 }
 
-void FDazToUnrealMaterials::CorrectDazShaders(FString& MaterialName, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
+void FDazToUnrealMaterials::CorrectDazShaders(FString MaterialName, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
 {
+	if (!MaterialProperties.Contains(MaterialName))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CorrectDazShaders(): ERROR: MaterialName not found in MaterialProperties: %s"), *MaterialName);
+		return;
+	}
+
 	FString ShaderName = MaterialProperties[MaterialName][0].ShaderName;
+	FString sMaterialAssetName = MaterialProperties[MaterialName][0].MaterialAssetName;
 
 	////////////////////////////////////////////////////////
 	// Shader Corrections for specific Daz-Shaders
@@ -504,9 +511,38 @@ void FDazToUnrealMaterials::CorrectDazShaders(FString& MaterialName, TMap<FStrin
 
 		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
 		if (
-			(sCleanedName.Contains(TEXT("KentHair")) && !MaterialName.Contains(TEXT("Cap")))
-			|| ( (sCleanedName.Contains(TEXT("CapriScalp")) || sCleanedName.Contains(TEXT("CapriHair"))) && !MaterialName.Contains(TEXT("_Scalp")))
-			|| (sCleanedName.Contains(TEXT("Bronwyn")) && MaterialName.Contains(TEXT("_hair")))
+			(
+				(sCleanedName.Contains(TEXT("KentHair")))
+				|| (sMaterialAssetName.Contains(TEXT("CapriHair")))
+				|| (sMaterialAssetName.Contains(TEXT("BronwynHair")))
+				|| (sMaterialAssetName.Contains(TEXT("PonyKnots")))
+				|| (sMaterialAssetName.Contains(TEXT("hair")))
+			) 
+			&& (!MaterialName.Contains(TEXT("_scalp")))
+			&& (!MaterialName.Contains(TEXT("_cap")))
+			)
+		{
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+		else if (MaterialName.Contains(TEXT("_scalp")) || MaterialName.Contains(TEXT("_cap")))
+		{
+			FString scalpFixString = TEXT("0.5");
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), scalpFixString, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+
+	}
+	if (ShaderName == TEXT("omUberSurface"))
+	{
+		double fIrayUberTransparencyCorrection = 5.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fIrayUberTransparencyCorrection);
+
+		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
+		if (
+			(sMaterialAssetName.Contains(TEXT("hair")))
+			&& (!MaterialName.Contains(TEXT("_scalp")))
+			&& (!MaterialName.Contains(TEXT("_cap")))
 			)
 		{
 			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
@@ -525,23 +561,21 @@ void FDazToUnrealMaterials::CorrectDazShaders(FString& MaterialName, TMap<FStrin
 	}
 	else if (ShaderName == TEXT("Littlefox Hair Shader"))
 	{
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fGlobalTransparencyCorrection);
+		SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+
 		FString hexCorrection = "";
 		bool _materialFound = false;
-
-
-		if (MaterialProperties.Contains(MaterialName))
+		// UE_LOG(LogTemp, Warning, TEXT("Executing For: %s"), *MaterialName);
+		for (FDUFTextureProperty Property : MaterialProperties[MaterialName])
 		{
-			// UE_LOG(LogTemp, Warning, TEXT("Executing For: %s"), *MaterialName);
-			for (FDUFTextureProperty Property : MaterialProperties[MaterialName])
+			// UE_LOG(LogTemp, Warning, TEXT("M: %s P: %s"), *MaterialName, *Property.Name);
+			if (Property.Name == TEXT("LLF-BaseColor"))
 			{
-				// UE_LOG(LogTemp, Warning, TEXT("M: %s P: %s"), *MaterialName, *Property.Name);
-				if (Property.Name == TEXT("LLF-BaseColor"))
-				{
-					hexCorrection = Property.Value;
-					SetMaterialProperty(MaterialName, TEXT("Diffuse Color"), TEXT("Color"), hexCorrection, MaterialProperties);
-					_materialFound = true;
-					break;
-				}
+				hexCorrection = Property.Value;
+				SetMaterialProperty(MaterialName, TEXT("Diffuse Color"), TEXT("Color"), hexCorrection, MaterialProperties);
+				_materialFound = true;
+				break;
 			}
 		}
 
