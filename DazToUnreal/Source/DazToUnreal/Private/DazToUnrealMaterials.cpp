@@ -64,7 +64,7 @@ FSoftObjectPath FDazToUnrealMaterials::GetBaseMaterial(FString MaterialName, TAr
 		BaseMaterialAssetPath = CachedSettings->BaseShaderMaterials[ShaderName];
 		//return BaseMaterialAssetPath;
 	}
-	
+
 	if (AssetType == TEXT("Follower/Hair"))
 	{
 		BaseMaterialAssetPath = CachedSettings->BaseHairMaterial;
@@ -165,7 +165,7 @@ FSoftObjectPath FDazToUnrealMaterials::GetBaseMaterial(FString MaterialName, TAr
 					BaseMaterialAssetPath = CachedSettings->BaseAlphaMaterial;
 				}
 			}
-			
+
 		}
 	}
 	else if (MaterialName.Contains(Seperator + TEXT("EyeMoisture")))
@@ -187,12 +187,13 @@ FSoftObjectPath FDazToUnrealMaterials::GetBaseMaterial(FString MaterialName, TAr
 				BaseMaterialAssetPath = CachedSettings->BaseAlphaMaterial;
 			}
 		}
-		
+
 	}
 	if (MaterialName.EndsWith(Seperator + TEXT("NoDraw")))
 	{
 		BaseMaterialAssetPath = CachedSettings->NoDrawMaterial;
 	}
+
 	return BaseMaterialAssetPath;
 }
 
@@ -206,7 +207,7 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 	{
 		BaseMaterialAssetPath = GetBaseMaterial(MaterialName, MaterialProperties[MaterialName]);
 	}
-	
+
 	FString ShaderName = "";
 	FString AssetType = "";
 	if (MaterialProperties.Contains(MaterialName))
@@ -372,6 +373,8 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 		//BaseMaterialAssetPath = CachedSettings->NoDrawMaterial;
 	}
 
+	CorrectDazShaders(MaterialName, MaterialProperties);
+
 	// Create the Material Instance
 	auto MaterialInstanceFactory = NewObject<UMaterialInstanceConstantFactoryNew>();
 #if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION < 26
@@ -485,6 +488,108 @@ UMaterialInstanceConstant* FDazToUnrealMaterials::CreateMaterial(const FString C
 	return UnrealMaterialConstant;
 }
 
+void FDazToUnrealMaterials::CorrectDazShaders(FString MaterialName, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
+{
+	if (!MaterialProperties.Contains(MaterialName))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CorrectDazShaders(): ERROR: MaterialName not found in MaterialProperties: %s"), *MaterialName);
+		return;
+	}
+
+	FString ShaderName = MaterialProperties[MaterialName][0].ShaderName;
+	FString sMaterialAssetName = MaterialProperties[MaterialName][0].MaterialAssetName;
+
+	////////////////////////////////////////////////////////
+	// Shader Corrections for specific Daz-Shaders
+	////////////////////////////////////////////////////////
+	FString sCleanedName = MaterialName.Replace(TEXT("_"), TEXT(""));
+	double fGlobalTransparencyCorrection = 10.0;
+	if (ShaderName == TEXT("Iray Uber"))
+	{
+		double fIrayUberTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fIrayUberTransparencyCorrection);
+
+		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
+		if (
+			(
+				(sCleanedName.Contains(TEXT("KentHair")))
+				|| (sMaterialAssetName.Contains(TEXT("CapriHair")))
+				|| (sMaterialAssetName.Contains(TEXT("BronwynHair")))
+				|| (sMaterialAssetName.Contains(TEXT("PonyKnots")))
+				|| (sMaterialAssetName.Contains(TEXT("hair")))
+			) 
+			&& (!MaterialName.Contains(TEXT("_scalp")))
+			&& (!MaterialName.Contains(TEXT("_cap")))
+			)
+		{
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+		else if (MaterialName.Contains(TEXT("_scalp")) || MaterialName.Contains(TEXT("_cap")))
+		{
+			FString scalpFixString = TEXT("0.5");
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), scalpFixString, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+
+	}
+	if (ShaderName == TEXT("omUberSurface"))
+	{
+		double fIrayUberTransparencyCorrection = 5.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fIrayUberTransparencyCorrection);
+
+		// 2022-Feb-03 (Qasim B): Transparency Correction for Kent Hair
+		if (
+			(sMaterialAssetName.Contains(TEXT("hair")))
+			&& (!MaterialName.Contains(TEXT("_scalp")))
+			&& (!MaterialName.Contains(TEXT("_cap")))
+			)
+		{
+			SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+			//UE_LOG(LogTemp, Warning, TEXT("Iray Uber shader detected and fixed for material %s"), *MaterialName);
+		}
+
+	}
+	else if (ShaderName == TEXT("OOT Hairblending Hair"))
+	{
+		// 2022-Jan-31 (Qasim B): Transparency Correction for OOT Hairblending Hair
+		double fOOTTransparencyCorrection = fGlobalTransparencyCorrection + 0.0;
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fOOTTransparencyCorrection);
+		SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+		//UE_LOG(LogTemp, Warning, TEXT("OOT Hairblending shader detected and fixed for material %s"), *MaterialName);
+
+	}
+	else if (ShaderName == TEXT("Littlefox Hair Shader"))
+	{
+		FString transparencyOffsetCorrection = FString::SanitizeFloat(fGlobalTransparencyCorrection);
+		SetMaterialProperty(MaterialName, TEXT("Transparency Offset"), TEXT("Double"), transparencyOffsetCorrection, MaterialProperties);
+
+		FString hexCorrection = "";
+		bool _materialFound = false;
+		// UE_LOG(LogTemp, Warning, TEXT("Executing For: %s"), *MaterialName);
+		for (FDUFTextureProperty Property : MaterialProperties[MaterialName])
+		{
+			// UE_LOG(LogTemp, Warning, TEXT("M: %s P: %s"), *MaterialName, *Property.Name);
+			if (Property.Name == TEXT("LLF-BaseColor"))
+			{
+				hexCorrection = Property.Value;
+				SetMaterialProperty(MaterialName, TEXT("Diffuse Color"), TEXT("Color"), hexCorrection, MaterialProperties);
+				_materialFound = true;
+				break;
+			}
+		}
+
+	}
+
+	////////////////////////////////////////////////////////
+	// Shader Corrections for specific Daz-Materials
+	////////////////////////////////////////////////////////
+	//
+	// Place holder for Material-specific corections
+	//
+
+}
+
 void FDazToUnrealMaterials::SetMaterialProperty(const FString& MaterialName, const FString& PropertyName, const FString& PropertyType, const FString& PropertyValue, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
 {
 	if (!MaterialProperties.Contains(MaterialName))
@@ -539,6 +644,7 @@ FSoftObjectPath FDazToUnrealMaterials::GetMostCommonBaseMaterial(TArray<FString>
 
 TArray<FDUFTextureProperty> FDazToUnrealMaterials::GetMostCommonProperties(TArray<FString> MaterialNames, TMap<FString, TArray<FDUFTextureProperty>> MaterialProperties)
 {
+
 	// Get a list of property names
 	TArray<FString> PossibleProperties;
 	for (FString MaterialName : MaterialNames)
@@ -640,7 +746,7 @@ FString FDazToUnrealMaterials::GetMaterialProperty(const FString& PropertyName, 
 USubsurfaceProfile* FDazToUnrealMaterials::CreateSubsurfaceBaseProfileForCharacter(const FString CharacterMaterialFolder, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties)
 {
 	const UDazToUnrealSettings* CachedSettings = GetDefault<UDazToUnrealSettings>();
-	
+
 	FString Seperator;
 	if ( CachedSettings->UseOriginalMaterialName)
 	{

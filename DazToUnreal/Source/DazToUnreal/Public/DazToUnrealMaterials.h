@@ -13,6 +13,7 @@ struct FDUFTextureProperty
 	FString Value;
 	FString ObjectName;
 	FString ShaderName;
+	FString MaterialAssetName;
 
 	inline bool operator==(const FDUFTextureProperty& rhs) const
 	{
@@ -25,6 +26,7 @@ class FDazToUnrealMaterials
 public:
 	static FSoftObjectPath GetBaseMaterial(FString MaterialName, TArray<FDUFTextureProperty > MaterialProperties);
 	static UMaterialInstanceConstant* CreateMaterial(const FString CharacterMaterialFolder, const FString CharacterTexturesFolder, FString& MaterialName, TMap<FString, TArray<FDUFTextureProperty>> MaterialProperties, const DazCharacterType CharacterType, UMaterialInstanceConstant* ParentMaterial, USubsurfaceProfile* SubsurfaceProfile);
+	static void CorrectDazShaders(FString MaterialName, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties);
 	static void SetMaterialProperty(const FString& MaterialName, const FString& PropertyName, const FString& PropertyType, const FString& PropertyValue, TMap<FString, TArray<FDUFTextureProperty>>& MaterialProperties);
 	static bool HasMaterialProperty(const FString& PropertyName, const TArray<FDUFTextureProperty> &MaterialProperties);
 	static FString GetMaterialProperty(const FString& PropertyName, const TArray<FDUFTextureProperty>& MaterialProperties);

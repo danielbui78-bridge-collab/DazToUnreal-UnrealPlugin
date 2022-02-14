@@ -11,6 +11,7 @@
 #include "DazToUnrealMorphs.h"
 #include "DazJointControlledMorphAnimInstance.h"
 
+#include "EditorLevelLibrary.h"
 #include "LevelEditor.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
@@ -115,6 +116,7 @@ THIRD_PARTY_INCLUDES_END
 
 int FDazToUnrealModule::BatchConversionMode;
 FString FDazToUnrealModule::BatchConversionDestPath;
+TMap<FString, FString> FDazToUnrealModule::AssetIDLookup;
 
 void FDazToUnrealModule::StartupModule()
 {
@@ -292,6 +294,8 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 		if (FPaths::FileExists(jobPoolFilename))
 		{
 			TArray<FString> jobPool;
+			TArray<TSharedPtr<FJsonObject>> environmentQueue;
+
 			FFileHelper::LoadFileToStringArray(jobPool, *jobPoolFilename);
 
 			for (int i = 0; i < jobPool.Num(); i++)
@@ -308,9 +312,22 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 				TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 				if (FJsonSerializer::Deserialize(JsonReader, JsonObject) && JsonObject.IsValid())
 				{
-					ImportFromDaz(JsonObject);
+					if (JsonObject->GetStringField(TEXT("Asset Type")) == TEXT("Environment"))
+					{
+						// move to environmentQueue
+						environmentQueue.Add(JsonObject);
+					}
+					else
+					{
+						ImportFromDaz(JsonObject);
+					}
 				}
 			}
+			for (int i = 0; i < environmentQueue.Num(); i++)
+			{
+				ImportFromDaz(environmentQueue[i]);
+			}
+
 		}
 		BatchConversionMode = 2;
 	}
@@ -354,7 +371,7 @@ bool FDazToUnrealModule::Tick(float DeltaTime)
 		FEditorFileUtils::SaveDirtyPackages(false,false,true);
 		FGenericPlatformMisc::RequestExit(false);
 	}
-	
+
 	return true;
 }
 
@@ -378,6 +395,13 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		 AssetType = DazAssetType::Environment;
 	 else if (JsonObject->GetStringField(TEXT("Asset Type")) == TEXT("Pose"))
 		 AssetType = DazAssetType::Pose;
+
+	 // Build AssetIDLookup
+	 FString AssetID = JsonObject->GetStringField(TEXT("AssetID"));
+	 if (!AssetIDLookup.Contains(AssetID))
+	 {
+		 AssetIDLookup.Add(AssetID, AssetName);
+	 }
 
 	 // Set up the folder paths
 	 FString ImportDirectory = FPaths::ProjectDir() / TEXT("Import");
@@ -429,7 +453,11 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 	 if (AssetType == DazAssetType::Environment)
 	 {
+		 FString LevelPath = CharacterFolder / AssetName;
+		 FString TemplatePath = TEXT("/Engine/Content/Maps/Templates/Template_Default");
+		 UEditorLevelLibrary::NewLevelFromTemplate(LevelPath, TemplatePath);
 		 FDazToUnrealEnvironment::ImportEnvironment(JsonObject);
+		 UEditorLevelLibrary::SaveCurrentLevel();
 		 return nullptr;
 	 }
 
@@ -457,6 +485,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 // Use the maps file to find the textures to load
 	 TMap<FString, FString> TextureFileSourceToTarget;
 	 TArray<FString> IntermediateMaterials;
+	 m_sourceTextureLookupTable.Reset();
 
 	 TArray<TSharedPtr<FJsonValue>> matList = JsonObject->GetArrayField(TEXT("Materials"));
 	 for (int32 i = 0; i < matList.Num(); i++)
@@ -607,11 +636,10 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 		  // Version 3 "Version, ObjectName, Material, [Type, Color, Opacity, File]"
 		  if (Version == 3)
-		  {		
+		  {
 				// DB 2022-Jan-14: Removed older BaseMat naming scheme to use unified "AssetName"
 //				FString ObjectName = material->GetStringField(TEXT("Asset Name"));
 //				ObjectName = FDazToUnrealUtils::SanitizeName(ObjectName);
-//				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
 
 				FString ObjectName = FDazToUnrealUtils::SanitizeName(AssetName);
 				IntermediateMaterials.AddUnique(ObjectName + TEXT("_BaseMat"));
@@ -625,7 +653,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				{
 					 MaterialName = ObjectName + TEXT("_") + material->GetStringField(TEXT("Material Name"));
 				}
-				
+
 				MaterialName = FDazToUnrealUtils::SanitizeName(MaterialName);
 
 				// DB 2021-Dec-16: TexturePath and TextureName moved to "per property" execution below
@@ -656,10 +684,19 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 
 					Property.ObjectName = ObjectName;
 					Property.ShaderName = ShaderName;
+					FString sMaterialAssetName = material->GetStringField(TEXT("Asset Name"));
+					Property.MaterialAssetName = FDazToUnrealUtils::SanitizeName(sMaterialAssetName);
 					if (Property.Type == TEXT("Texture"))
 					{
 						Property.Type = TEXT("Color");
 					}
+                    if (Property.Name == TEXT("Cutout Opacity") )
+					{
+						TextureLookupInfo lookupInfo;
+						lookupInfo.sSourceFullPath = TexturePath;
+						lookupInfo.bIsCutOut = true;
+						m_sourceTextureLookupTable.Add(TextureName, lookupInfo);
+                    }
 
 					// Properties that end with Enabled are switches for functionality
 					if (Property.Name.EndsWith(TEXT(" Enable")))
@@ -858,7 +895,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* IKRootNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_foot_root")));
 		  if (!IKRootNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKRootNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_root")));
 				IKRootNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKRootNodeAttribute->Size.Set(1.0);
@@ -873,7 +910,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* FootLNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("lFoot")));
 		  if (!IKFootLNode && FootLNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKFootLNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_l")));
 				IKFootLNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKFootLNodeAttribute->Size.Set(1.0);
@@ -889,7 +926,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* FootRNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("rFoot")));
 		  if (!IKFootRNode && FootRNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKFootRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_foot_r")));
 				IKFootRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKFootRNodeAttribute->Size.Set(1.0);
@@ -904,7 +941,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* IKHandRootNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_root")));
 		  if (!IKHandRootNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRootNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_root")));
 				IKHandRootNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRootNodeAttribute->Size.Set(1.0);
@@ -919,7 +956,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  FbxNode* HandRNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("rHand")));
 		  if (!IKHandGunNode && HandRNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandGunNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 				IKHandGunNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandGunNodeAttribute->Size.Set(1.0);
@@ -936,7 +973,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  //FbxNode* IKHandGunNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 		  if (!IKHandRNode && HandRNode && IKHandGunNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_r")));
 				IKHandRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRNodeAttribute->Size.Set(1.0);
@@ -952,7 +989,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  //FbxNode* IKHandGunNode = Scene->FindNodeByName(TCHAR_TO_UTF8(TEXT("ik_hand_gun")));
 		  if (!IKHandLNode && HandLNode && IKHandGunNode)
 		  {
-				// Create IK Root 
+				// Create IK Root
 				FbxSkeleton* IKHandRNodeAttribute = FbxSkeleton::Create(Scene, TCHAR_TO_UTF8(TEXT("ik_hand_l")));
 				IKHandRNodeAttribute->SetSkeletonType(FbxSkeleton::eLimbNode);
 				IKHandRNodeAttribute->Size.Set(1.0);
@@ -1102,7 +1139,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  {
 				 NewMaterialName = AssetName + TEXT("_") + OriginalMaterialName;
 		  }
-		 
+
 		  NewMaterialName = FDazToUnrealUtils::SanitizeName(NewMaterialName);
 		  Material->SetName(TCHAR_TO_UTF8(*NewMaterialName));
 		  if (MaterialProperties.Contains(NewMaterialName))
@@ -1111,16 +1148,30 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 		  }
 		  else
 		  {
-				for (int32 MeshIndex = Scene->GetGeometryCount() - 1; MeshIndex >= 0; --MeshIndex)
+				// search all materialproperties for partial match
+				bool bPartialMatchFound = false;
+				for (auto keyvalPair : MaterialProperties)
 				{
-					 FbxGeometry* Geometry = Scene->GetGeometry(MeshIndex);
-					 FbxNode* GeometryNode = Geometry->GetNode();
-					 if (GeometryNode->GetMaterialIndex(TCHAR_TO_UTF8(*NewMaterialName)) != -1)
-					 {
-						  Scene->RemoveGeometry(Geometry);
-					 }
+					if (keyvalPair.Key.Contains(TEXT("_") + OriginalMaterialName))
+					{
+						MaterialNames.Add(keyvalPair.Key);
+						bPartialMatchFound = true;
+						break;
+					}
 				}
-				Scene->RemoveMaterial(Material);
+				if (bPartialMatchFound == false)
+				{
+					for (int32 MeshIndex = Scene->GetGeometryCount() - 1; MeshIndex >= 0; --MeshIndex)
+					{
+						FbxGeometry* Geometry = Scene->GetGeometry(MeshIndex);
+						FbxNode* GeometryNode = Geometry->GetNode();
+						if (GeometryNode->GetMaterialIndex(TCHAR_TO_UTF8(*NewMaterialName)) != -1)
+						{
+							Scene->RemoveGeometry(Geometry);
+						}
+					}
+					Scene->RemoveMaterial(Material);
+				}
 		  }
 
 	 }
@@ -1177,10 +1228,21 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 if (AssetType == DazAssetType::SkeletalMesh || AssetType == DazAssetType::StaticMesh)
 	 {
 		  TArray<FString> TexturesFilesToImport;
+		  m_targetTextureLookupTable.Reset();
 		  for (auto TexturePair : TextureFileSourceToTarget)
 		  {
 				FString SourceFileName = TexturePair.Key;
 				FString TargetFileName = ImportCharacterTexturesFolder / TexturePair.Value + FPaths::GetExtension(SourceFileName, true);
+
+				// Map m_sourceTextureLookupTable to m_targetTextureLookupTable
+				// TODO: convert in place: m_sourceTextureLookupTable to m_targetTextureLookupTable
+				FString sSearchString = FDazToUnrealUtils::SanitizeName(FPaths::GetBaseFilename(SourceFileName));
+				if (m_sourceTextureLookupTable.Contains(sSearchString))
+				{
+					TextureLookupInfo lookupData = m_sourceTextureLookupTable[sSearchString];
+					m_targetTextureLookupTable.Add(TargetFileName, lookupData);
+				}
+
 				PlatformFile.CopyFile(*TargetFileName, *SourceFileName);
 				TexturesFilesToImport.Add(TargetFileName);
 		  }
@@ -1302,7 +1364,7 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 				 SkeletalMesh->PostProcessAnimBlueprint = JointControlAnim->GetClass();
 			 }
 		 }
-		 
+
 	 }
 
 	 return NewObject;
@@ -1409,6 +1471,36 @@ bool FDazToUnrealModule::ImportTextureAssets(TArray<FString>& SourcePaths, FStri
 		 return false;
 	 }
 	 TArray<UObject*> ImportedAssets = AssetToolsModule.Get().ImportAssetsAutomated(ImportData);
+
+	 // Texture Corrections: sRGB
+	 if (ImportedAssets.Num() != SourcePaths.Num())
+	 {
+		 UE_LOG(LogTemp, Warning, TEXT("DazToUnreal: ImportTextureAssets() ERROR: ImportedAssets count is not equal to SourcePaths count. Texture Lookup Correction will likely fail..."));
+	 }
+	 int textureIndex = 0;
+	 for (FString SourcePath : SourcePaths)
+	 {
+		 if (m_targetTextureLookupTable.Contains(SourcePath))
+		 {
+			 TextureLookupInfo lookupData = m_targetTextureLookupTable[SourcePath];
+			 if (lookupData.bIsCutOut == true)
+			 {
+				 if (textureIndex >= ImportedAssets.Num())
+				 {
+					 UE_LOG(LogTemp, Warning, TEXT("DazToUnreal: ERROR: sRGB-corection texture-index lookup procedure returned invalid texture index. Skipping..."));
+				 }
+				 else
+				 {
+					 if (UTexture* texture = Cast<UTexture>(ImportedAssets[textureIndex]))
+					 {
+						 texture->SRGB = false;
+					 }
+				 }
+			 }
+		 }
+		 textureIndex++;
+	 }
+
 	 if (ImportedAssets.Num() > 0)
 	 {
 		  return true;
