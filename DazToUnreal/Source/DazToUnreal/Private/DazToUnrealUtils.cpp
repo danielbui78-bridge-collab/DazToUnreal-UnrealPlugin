@@ -1,6 +1,12 @@
 #include "DazToUnrealUtils.h"
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "Misc/Paths.h"
+#include "Engine/SkeletalMesh.h"
+
+
+#include "Engine/StaticMesh.h"
+#include "EditorFramework/AssetImportData.h"
+#include "Factories/FbxAssetImportData.h"
 
 FString FDazToUnrealUtils::SanitizeName(FString OriginalName)
 {
@@ -20,33 +26,45 @@ FString FDazToUnrealUtils::SanitizeName(FString OriginalName)
 
 bool FDazToUnrealUtils::MakeDirectoryAndCheck(FString& Directory)
 {
-	// Directory Tree Algorithm courtesy of: "https://nerivec.github.io/old-ue4-wiki/pages/algorithm-analysis-create-directory-recursively.html"
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	FString TargetFolderPath = Directory;
-	FPaths::NormalizeDirectoryName(TargetFolderPath);
-	TargetFolderPath += "/";
-
-	FString CurrentFolderLevel;
-	FString NextFolderLevel;
-	FString RemainingString;
-
-	TargetFolderPath.Split(TEXT("/"), &CurrentFolderLevel, &RemainingString);
-	CurrentFolderLevel += "/";
-
-	int loopIterations = 0;
-	while (RemainingString != "" && loopIterations < 1000)
+	if (!FPaths::DirectoryExists(Directory))
 	{
-		RemainingString.Split(TEXT("/"), &NextFolderLevel, &RemainingString);
-		CurrentFolderLevel += NextFolderLevel + FString("/");
-		if (!FPaths::DirectoryExists(CurrentFolderLevel))
+		PlatformFile.CreateDirectoryTree(*Directory);
+		if (!FPaths::DirectoryExists(Directory))
 		{
-			PlatformFile.CreateDirectory(*CurrentFolderLevel);
-			if (!FPaths::DirectoryExists(CurrentFolderLevel))
-			{
-				return false;
-			}
+			return false;
 		}
-		loopIterations++;
 	}
 	return true;
+}
+
+bool FDazToUnrealUtils::IsModelFacingX(UObject* MeshObject)
+{
+	if(USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(MeshObject))
+	{
+#if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION < 27
+		if (UAssetImportData* AssetImportData = SkeletalMesh->AssetImportData)
+#else
+		if (UAssetImportData* AssetImportData = SkeletalMesh->GetAssetImportData())
+#endif
+		{
+			UFbxAssetImportData* FbxAssetImportData = Cast<UFbxAssetImportData>(AssetImportData);
+			if (FbxAssetImportData != nullptr && FbxAssetImportData->bForceFrontXAxis)
+			{
+				return true;
+			}
+		}
+	}
+	if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(MeshObject))
+	{
+		if (UAssetImportData* AssetImportData = StaticMesh->AssetImportData)
+		{
+			UFbxAssetImportData* FbxAssetImportData = Cast<UFbxAssetImportData>(AssetImportData);
+			if (FbxAssetImportData != nullptr && FbxAssetImportData->bForceFrontXAxis)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }

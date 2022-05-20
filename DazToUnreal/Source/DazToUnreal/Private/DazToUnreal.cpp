@@ -271,7 +271,11 @@ void FDazToUnrealModule::StartupUDPListener()
 		  .BoundToEndpoint(Endpoint);
 
 	 TickDelegate = FTickerDelegate::CreateRaw(this, &FDazToUnrealModule::Tick);
+#if ENGINE_MAJOR_VERSION > 4
+	 TickDelegateHandle = FTSTicker::GetCoreTicker().AddTicker(TickDelegate, 1.0f);
+#else
 	 TickDelegateHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate, 1.0f);
+#endif
 }
 void FDazToUnrealModule::ShutdownUDPListener()
 {
@@ -445,11 +449,11 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(ImportDirectory)) return nullptr;
 	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(ImportCharacterFolder)) return nullptr;
 	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(ImportCharacterTexturesFolder)) return nullptr;
-	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(LocalDAZImportFolder)) return nullptr;
-	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(LocalDAZAnimationImportFolder)) return nullptr;
-	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(LocalCharacterFolder)) return nullptr;
-	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(LocalCharacterTexturesFolder)) return nullptr;
-	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(LocalCharacterMaterialFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(DAZImportFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(DAZAnimationImportFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(CharacterFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(CharacterTexturesFolder)) return nullptr;
+	 if (!FDazToUnrealUtils::MakeDirectoryAndCheck(CharacterMaterialFolder)) return nullptr;
 
 	 if (AssetType == DazAssetType::Environment)
 	 {
@@ -1082,10 +1086,6 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 								}
 						  }
 					 }
-					 for (FbxBlendShapeChannel* Channel : ChannelsToRemove)
-					 {
-						  BlendShape->RemoveBlendShapeChannel(Channel);
-					 }
 				}
 		  }
 	 }
@@ -1337,7 +1337,8 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 }
 
 	 // Import FBX
-	 UObject* NewObject = ImportFBXAsset(UpdatedFBXFile, CharacterFolder, AssetType, CharacterType, CharacterTypeName);
+	 bool bSetPostProcessAnimation = !FDazToUnrealMorphs::IsAutoJCMImport(JsonObject);
+	 UObject* NewObject = ImportFBXAsset(UpdatedFBXFile, CharacterFolder, AssetType, CharacterType, CharacterTypeName, bSetPostProcessAnimation);
 
 	 // If this is a Pose transfer, an AnimSequence was created.  Make a PoseAsset from it.
 	 if (AssetType == DazAssetType::Pose)
@@ -1358,10 +1359,19 @@ UObject* FDazToUnrealModule::ImportFromDaz(TSharedPtr<FJsonObject> JsonObject)
 	 {
 		 if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(NewObject))
 		 {
-			 if (UDazJointControlledMorphAnimInstance* JointControlAnim = FDazToUnrealMorphs::CreateJointControlAnimation(JsonObject, CharacterFolder, AssetName, SkeletalMesh->Skeleton, SkeletalMesh))
+#if ENGINE_MAJOR_VERSION > 4
+			 USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+#else
+			 USkeleton* Skeleton = SkeletalMesh->Skeleton;
+#endif
+			 if (UDazJointControlledMorphAnimInstance* JointControlAnim = FDazToUnrealMorphs::CreateJointControlAnimation(JsonObject, CharacterFolder, AssetName, Skeleton, SkeletalMesh))
 			 {
 				 //JointControlAnim->CurrentSkeleton = SkeletalMesh->Skeleton;
+#if ENGINE_MAJOR_VERSION > 4
+				 SkeletalMesh->SetPostProcessAnimBlueprint(JointControlAnim->GetClass());
+#else
 				 SkeletalMesh->PostProcessAnimBlueprint = JointControlAnim->GetClass();
+#endif
 			 }
 		 }
 
@@ -1508,7 +1518,7 @@ bool FDazToUnrealModule::ImportTextureAssets(TArray<FString>& SourcePaths, FStri
 	 return false;
 }
 
-UObject* FDazToUnrealModule::ImportFBXAsset(const FString& SourcePath, const FString& ImportLocation, const DazAssetType& AssetType, const DazCharacterType& CharacterType, const FString& CharacterTypeName)
+UObject* FDazToUnrealModule::ImportFBXAsset(const FString& SourcePath, const FString& ImportLocation, const DazAssetType& AssetType, const DazCharacterType& CharacterType, const FString& CharacterTypeName, const bool bSetPostProcessAnimation)
 {
 	 FAssetToolsModule& AssetToolsModule = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools");
 	 UDazToUnrealSettings* CachedSettings = GetMutableDefault<UDazToUnrealSettings>();
@@ -1564,6 +1574,7 @@ UObject* FDazToUnrealModule::ImportFBXAsset(const FString& SourcePath, const FSt
 	 {
 		  FbxFactory->ImportUI->bImportAsSkeletal = false;
 		  FbxFactory->ImportUI->bImportMaterials = true;
+		  FbxFactory->ImportUI->StaticMeshImportData->bForceFrontXAxis = false;
 		  FbxFactory->ImportUI->MeshTypeToImport = FBXIT_StaticMesh;
 	 }
 	 if (AssetType == DazAssetType::Animation || AssetType == DazAssetType::Pose)
@@ -1622,15 +1633,24 @@ UObject* FDazToUnrealModule::ImportFBXAsset(const FString& SourcePath, const FSt
 	 {
 		  if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(ImportedAsset))
 		  {
-				if (CachedSettings->SkeletonPostProcessAnimation.Contains(SkeletonPath))
+				if (bSetPostProcessAnimation && CachedSettings->SkeletonPostProcessAnimation.Contains(SkeletonPath))
 				{
+#if ENGINE_MAJOR_VERSION > 4
+					SkeletalMesh->SetPostProcessAnimBlueprint(CachedSettings->SkeletonPostProcessAnimation[SkeletonPath].TryLoadClass<UAnimInstance>());
+#else
 					SkeletalMesh->PostProcessAnimBlueprint = CachedSettings->SkeletonPostProcessAnimation[SkeletonPath].TryLoadClass<UAnimInstance>();
+#endif
 				}
 
 				//Get the new skeleton
 				if (!Skeleton)
 				{
+#if ENGINE_MAJOR_VERSION > 4
+					Skeleton = SkeletalMesh->GetSkeleton();
+#else
 					 Skeleton = SkeletalMesh->Skeleton;
+#endif
+
 					 int32 BoneIndex = Skeleton->GetReferenceSkeleton().FindBoneIndex(FName(TEXT("pelvis")));
 					 if (BoneIndex == -1)
 					 {
