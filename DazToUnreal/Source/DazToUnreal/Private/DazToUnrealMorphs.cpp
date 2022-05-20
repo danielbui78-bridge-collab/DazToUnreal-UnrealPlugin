@@ -187,11 +187,26 @@ UAnimBlueprint* FDazToUnrealMorphs::CreateBlueprint(UObject* InParent, FName Nam
 	
 }
 
+bool FDazToUnrealMorphs::IsAutoJCMImport(TSharedPtr<FJsonObject> JsonObject)
+{
+	const TArray<TSharedPtr<FJsonValue>>* JointLinkList;
+	if (JsonObject->TryGetArrayField(TEXT("JointLinks"), JointLinkList))
+	{
+		return true;
+	}
+	return false;
+}
+
 void FDazToUnrealMorphs::FakeDualQuarternion(FName MorphName, FName BoneName, EDazMorphAnimInstanceDriver Axis, float MinBend, float MaxBend, USkeletalMesh* Mesh)
 {
+#if 0
 	if (UMorphTarget* Morph = Mesh->FindMorphTarget(MorphName))
 	{
+#if ENGINE_MAJOR_VERSION > 4
+		const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
+#else
 		const FReferenceSkeleton& RefSkeleton = Mesh->RefSkeleton;
+#endif
 
 		TArray<FTransform> ComponentSpaceTransforms;
 		FAnimationRuntime::FillUpComponentSpaceTransforms(RefSkeleton, RefSkeleton.GetRefBonePose(), ComponentSpaceTransforms);
@@ -464,4 +479,5 @@ void FDazToUnrealMorphs::FakeDualQuarternion(FName MorphName, FName BoneName, ED
 		}
 		Mesh->SaveLODImportedData(0, ImportData);
 	}
+#endif
 }
