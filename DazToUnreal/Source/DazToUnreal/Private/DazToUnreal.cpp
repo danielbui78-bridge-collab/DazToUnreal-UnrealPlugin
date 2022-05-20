@@ -1503,7 +1503,12 @@ bool FDazToUnrealModule::ImportTextureAssets(TArray<FString>& SourcePaths, FStri
 				 {
 					 if (UTexture* texture = Cast<UTexture>(ImportedAssets[textureIndex]))
 					 {
+#if ENGINE_MAJOR_VERSION > 4
+						 // SRGB is crashing UE5, memory access violation???
+//						 texture->SRGB = false;
+#else
 						 texture->SRGB = false;
+#endif
 					 }
 				 }
 			 }
